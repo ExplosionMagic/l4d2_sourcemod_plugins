@@ -1,4 +1,4 @@
-<b>[survivor_mvp_fix](/survivor_mvp)<b>: Display survivors' data such as killing SI, CI, FF done to teammates
+<b>[survivor_mvp_fix](/survivor_mvp)</b>: Display survivors' data such as killing SI, CI, FF done to teammates
 （生还者 MVP 数据显示，可显示生还者击杀特感、丧尸、友伤等数据）
 
 <ul>漏洞修复:
