@@ -342,11 +342,16 @@ void roundEndPrint()
     if (showTeam != 0 && GetClientTeam(i) != showTeam)
       continue;
 
-    // 仅当需要且尚未发送时才调用
     if (needInfo && !g_bHasPrint)
       printMvpStatus(i);
     if (needDetails && !g_bHasPrintDetails)
+    {
       printParticularMvp(i);
+
+      // 显示排名
+      if (g_hAllowShowRank.BoolValue && g_hAllowShowRankMvp.BoolValue)
+        showRank(i);
+    }
   }
 
   // 标记已发送，避免后续事件重复
@@ -359,7 +364,6 @@ void roundEndPrint()
  * @param client 需要显示的客户端索引
  * @return void
  **/
-
 void printMvpStatus(int client)
 {
   int index     = 0;
@@ -394,7 +398,7 @@ void printMvpStatus(int client)
       StrCat(toPrint, sizeof(toPrint), buffer);
     }
 
-    // 总计伤害
+    // 总伤害
     if (g_hAllowShowTotalDmg.BoolValue)
     {
       FormatEx(buffer, sizeof(buffer), "{default}伤害:{green}%d ", playerInfos[players[i]].totalDamage);
@@ -519,7 +523,8 @@ void printParticularMvp(int client)
     CPrintToChat(client, "%s", buffer);
   }
 
-  // 允许显示排名——弃用
+  // 允许显示排名
+  // 移到 roundEndPrint() 实现每回合只打印一次
   // if (g_hAllowShowRank.BoolValue && g_hAllowShowRankMvp.BoolValue)
   // {
   //   showRank(client);
