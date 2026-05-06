@@ -354,6 +354,12 @@ void roundEndPrint()
   if (needDetails) g_bHasPrintDetails = true;
 }
 
+/**
+ * 显示主 MVP 信息 (特感击杀, 丧尸击杀, 总伤害, 黑枪/被黑, 爆头率)
+ * @param client 需要显示的客户端索引
+ * @return void
+ **/
+
 void printMvpStatus(int client)
 {
   int index     = 0;
@@ -368,28 +374,34 @@ void printMvpStatus(int client)
 
   SortCustom1D(players, index, sortByDamageFunction);
 
-  CPrintToChat(client, "{green}[MVP] {olive}击杀统计");
+  CPrintToChat(client, "{olive}[MVP] {green}击杀统计");
 
   char buffer[128], toPrint[256];
   for (int i = 0; i < index; i++)
   {
     toPrint[0] = '\0';
-
+    // 击杀特感数
     if (g_hAllowShowSi.BoolValue)
     {
       FormatEx(buffer, sizeof(buffer), "{orange}★ {default}特感:{green}%d ", playerInfos[players[i]].siCount);
       StrCat(toPrint, sizeof(toPrint), buffer);
     }
+
+    // 击杀丧尸数
     if (g_hAllowShowCi.BoolValue)
     {
       FormatEx(buffer, sizeof(buffer), "{default}丧尸:{green}%d ", playerInfos[players[i]].ciCount);
       StrCat(toPrint, sizeof(toPrint), buffer);
     }
+
+    // 总计伤害
     if (g_hAllowShowTotalDmg.BoolValue)
     {
       FormatEx(buffer, sizeof(buffer), "{default}伤害:{green}%d ", playerInfos[players[i]].totalDamage);
       StrCat(toPrint, sizeof(toPrint), buffer);
     }
+
+    // 造成友伤/受到友伤
     if (g_hAllowShowFF.BoolValue)
     {
       // 修复：此处必须使用 players[i] 而非 i
@@ -398,6 +410,14 @@ void printMvpStatus(int client)
       FormatEx(buffer, sizeof(buffer), "{default}被黑:{green}%d ", playerInfos[players[i]].gotFFCount);
       StrCat(toPrint, sizeof(toPrint), buffer);
     }
+
+    // 射击精准度
+    //   if (g_hAllowShowAccuracy.BoolValue)
+    // {
+    //   float accuracy = playerInfos[players[i]].siCount + playerInfos[players[i]].ciCount == 0 ? 0.0 : float(playerInfos[players[i]].headShotCount) / float(playerInfos[players[i]].siCount + playerInfos[players[i]].ciCount);
+    //   FormatEx(buffer, sizeof(buffer), "{lightgreen}精准度:{green}%.0f%% ", accuracy * 100.0);
+    //   StrCat(toPrint, sizeof(toPrint), buffer);
+    // }
 
     FormatEx(buffer, sizeof(buffer), "{lightgreen}%N", players[i]);
     StrCat(toPrint, sizeof(toPrint), buffer);
@@ -442,7 +462,7 @@ void printParticularMvp(int client)
     else
     {
       formatMvpClientName(siMvpClient, clientName, sizeof(clientName));
-      // 避免除零崩溃风险
+      // 避免极端情况百分比除零导致游戏崩溃
       int dmgPercent  = (dmgTotal > 0) ? RoundToNearest(float(playerInfos[siMvpClient].totalDamage) / float(dmgTotal) * 100.0) : 0;
       int killPercent = (siTotal > 0) ? RoundToNearest(float(playerInfos[siMvpClient].siCount) / float(siTotal) * 100.0) : 0;
       FormatEx(temp, sizeof(temp), "%s {default}伤害:{green}%d {default}({green}%d%%{default}), {default}击杀:{green}%d {default}({green}%d%%{default})",
@@ -470,6 +490,7 @@ void printParticularMvp(int client)
 
   if (g_hAllowShowFF.BoolValue)
   {
+    // 黑枪最多
     FormatEx(buffer, sizeof(buffer), "{olive}[黑枪之王] ");
     if (!IsValidClient(ffMvpClient) || ffTotal <= 0)
       StrCat(buffer, sizeof(buffer), "{default}大家都没有黑枪");
@@ -482,7 +503,27 @@ void printParticularMvp(int client)
       StrCat(buffer, sizeof(buffer), temp);
     }
     CPrintToChat(client, "%s", buffer);
+
+    // 挨枪最多
+    FormatEx(buffer, sizeof(buffer), "{olive}[挨枪之王] ");
+    if (!IsValidClient(gotFFMvpClient) || gotFFTotal <= 0)
+      StrCat(buffer, sizeof(buffer), "{default}暂时没有倒霉蛋被黑得最惨");
+    else
+    {
+      formatMvpClientName(gotFFMvpClient, clientName, sizeof(clientName));
+      int killPercent = (gotFFTotal > 0) ? RoundToNearest(float(playerInfos[gotFFMvpClient].gotFFCount) / float(gotFFTotal) * 100.0) : 0;
+      FormatEx(temp, sizeof(temp), "%s {default}受到友伤:{green}%d {default}({green}%d%%{default})",
+               clientName, playerInfos[gotFFMvpClient].gotFFCount, killPercent);
+      StrCat(buffer, sizeof(buffer), temp);
+    }
+    CPrintToChat(client, "%s", buffer);
   }
+
+  // 允许显示排名——弃用
+  // if (g_hAllowShowRank.BoolValue && g_hAllowShowRankMvp.BoolValue)
+  // {
+  //   showRank(client);
+  // }
 }
 
 void showRank(int client)
@@ -504,10 +545,11 @@ void showRank(int client)
   char buffer[128];
   int  rank, dmgPercent, killPercent;  // rank将初始化为0
 
+  // 击杀特感排名
   if (g_hAllowShowSi.BoolValue && g_hAllowShowRankSI.BoolValue)
   {
     rank = GetRank(client, sortBySiCountFunction);
-    FormatEx(buffer, sizeof(buffer), "{olive}[{default}Rank{olive}] {olive}特感");
+    FormatEx(buffer, sizeof(buffer), "{olive}[击杀特感排名]:");
     if (rank > 0 && siTotal > 0)
     {
       if (rank == 1)
@@ -516,18 +558,19 @@ void showRank(int client)
       {
         dmgPercent  = (dmgTotal > 0) ? RoundToNearest(float(playerInfos[client].totalDamage) / float(dmgTotal) * 100.0) : 0;
         killPercent = (siTotal > 0) ? RoundToNearest(float(playerInfos[client].siCount) / float(siTotal) * 100.0) : 0;
-        CPrintToChat(client, "%s {green}#%d {default}伤害:{olive}%d {default}({olive}%d%%{default}),{default}击杀:{olive}%d {default}({olive}%d%%{default})",
+        CPrintToChat(client, "%s {olive}#%d {default}伤害:{olive}%d {default}({olive}%d%%{default}),{default}击杀:{olive}%d {default}({olive}%d%%{default})",
                      buffer, rank, playerInfos[client].totalDamage, dmgPercent, playerInfos[client].siCount, killPercent);
       }
     }
     else
-      CPrintToChat(client, "%s {green}暂无排名", buffer);
+      CPrintToChat(client, "%s {default}暂无排名", buffer);
   }
 
+  // 击杀丧尸排名
   if (g_hAllowShowCi.BoolValue && g_hAllowShowRankCI.BoolValue)
   {
     rank = GetRank(client, sortByCiCountFunction);
-    FormatEx(buffer, sizeof(buffer), "{olive}[{default}Rank{olive}] {olive}丧尸");
+    FormatEx(buffer, sizeof(buffer), "{olive}[击杀丧尸排名]:");
     if (rank > 0 && ciTotal > 0)
     {
       if (rank == 1)
@@ -540,13 +583,14 @@ void showRank(int client)
       }
     }
     else
-      CPrintToChat(client, "%s {green}暂无排名", buffer);
+      CPrintToChat(client, "%s {default}暂无排名", buffer);
   }
 
+  // 造成友伤排名
   if (g_hAllowShowFF.BoolValue && g_hAllowShowRankFF.BoolValue)
   {
     rank = GetRank(client, sortByFriendlyFireFunction);
-    FormatEx(buffer, sizeof(buffer), "{olive}[{default}Rank{olive}] {olive}黑枪");
+    FormatEx(buffer, sizeof(buffer), "{olive}[造成友伤排名]:");
     if (rank > 0 && ffTotal > 0)
     {
       if (rank == 1)
@@ -559,7 +603,7 @@ void showRank(int client)
       }
     }
     else
-      CPrintToChat(client, "%s {green}暂无排名", buffer);
+      CPrintToChat(client, "%s {default}暂无排名", buffer);
   }
 }
 
@@ -588,6 +632,13 @@ int GetRank(int client, SortFunc1D SortRank)
   return rank;
 }
 
+/**
+ * 根据客户端是否为 BOT 在其名字后面添加 [BOT] 字样
+ * @param client 需要获取名称的客户端索引
+ * @param str 名称字符串
+ * @param len 字符串长度
+ * @return void
+ **/
 void formatMvpClientName(int client, char[] str, int len)
 {
   if (IsFakeClient(client))
@@ -597,11 +648,27 @@ void formatMvpClientName(int client, char[] str, int len)
 }
 
 // ============ 排序函数 ============
+/**
+ * 按照生还者总伤害击杀特感数量 -> 客户端索引排序
+ * @param x 第一个参与排序的元素
+ * @param y 第二个参与排序的元素
+ * @param array 原数组
+ * @param hndl 可选句柄
+ * @return int
+ **/
 stock int sortBySiCountFunction(int x, int y, const int[] array, Handle hndl)
 {
   return playerInfos[x].siCount > playerInfos[y].siCount ? -1 : (playerInfos[x].siCount == playerInfos[y].siCount ? 0 : 1);
 }
 
+/**
+ * 按照生还者击杀丧尸数量 -> 客户端索引排序
+ * @param x 第一个参与排序的元素
+ * @param y 第二个参与排序的元素
+ * @param array 原数组
+ * @param hndl 可选句柄
+ * @return int
+ **/
 stock int sortByCiCountFunction(int x, int y, const int[] array, Handle hndl)
 {
   if (playerInfos[x].ciCount > playerInfos[y].ciCount)
@@ -611,6 +678,14 @@ stock int sortByCiCountFunction(int x, int y, const int[] array, Handle hndl)
   return 1;
 }
 
+/**
+ * 按照生还者总伤害 -> 客户端索引排序
+ * @param x 第一个参与排序的元素
+ * @param y 第二个参与排序的元素
+ * @param array 原数组
+ * @param hndl 可选句柄
+ * @return int
+ **/
 stock int sortByTotalDamageFunction(int x, int y, const int[] array, Handle hndl)
 {
   if (playerInfos[x].totalDamage > playerInfos[y].totalDamage)
@@ -620,6 +695,14 @@ stock int sortByTotalDamageFunction(int x, int y, const int[] array, Handle hndl
   return 1;
 }
 
+/**
+ * 按照生还者总伤害 -> 射击精准度 -> 客户端索引排序
+ * @param x 第一个参与排序的元素
+ * @param y 第二个参与排序的元素
+ * @param array 原数组
+ * @param hndl 可选句柄
+ * @return int
+ **/
 stock int sortByDamageFunction(int x, int y, const int[] array, Handle hndl)
 {
   int xDamage = playerInfos[x].totalDamage;
@@ -628,7 +711,7 @@ stock int sortByDamageFunction(int x, int y, const int[] array, Handle hndl)
   if (xDamage > yDamage) return -1;
   if (xDamage < yDamage) return 1;
 
-  // 伤害相同，比爆头率
+  // 伤害相同，比射击精准度
   int   xCount = playerInfos[x].siCount + playerInfos[x].ciCount;
   int   yCount = playerInfos[y].siCount + playerInfos[y].ciCount;
   float xAcc   = (xCount > 0) ? float(playerInfos[x].headShotCount) / float(xCount) : 0.0;
@@ -636,10 +719,18 @@ stock int sortByDamageFunction(int x, int y, const int[] array, Handle hndl)
 
   if (xAcc > yAcc) return -1;
   if (xAcc < yAcc) return 1;
-  // 若爆头率相同，按客户端索引（较小的在前）
+  // 若射击精准度相同，按客户端索引（较小的在前）
   return x > y ? -1 : 1;
 }
 
+/**
+ * 按照生还者黑枪 -> 被黑 -> 客户端索引排序
+ * @param x 第一个参与排序的元素
+ * @param y 第二个参与排序的元素
+ * @param array 原数组
+ * @param hndl 可选句柄
+ * @return int
+ **/
 stock int sortByFriendlyFireFunction(int x, int y, const int[] array, Handle hndl)
 {
   if (playerInfos[x].ffCount > playerInfos[y].ffCount)
@@ -654,6 +745,14 @@ stock int sortByFriendlyFireFunction(int x, int y, const int[] array, Handle hnd
   return 1;
 }
 
+/**
+ * 按照生还者被黑 -> 客户端索引排序
+ * @param x 第一个参与排序的元素
+ * @param y 第二个参与排序的元素
+ * @param array 原数组
+ * @param hndl 可选句柄
+ * @return int
+ **/
 stock int sortByFFReceiveFunction(int x, int y, const int[] array, Handle hndl)
 {
   if (playerInfos[x].gotFFCount > playerInfos[y].gotFFCount)
@@ -664,21 +763,27 @@ stock int sortByFFReceiveFunction(int x, int y, const int[] array, Handle hndl)
 }
 
 // ============ 工具函数 ============
+// 判断是否有效玩家 id，有效返回 true，无效返回 false
+// @client：需要判断的生还者客户端索引
 stock bool IsValidClient(int client)
 {
   return client > 0 && client <= MaxClients && IsClientInGame(client);
 }
 
+// 判断生还者是否有效，有效返回 true，无效返回 false
+// @client：需要判断的生还者客户端索引
 stock bool IsValidSurvivor(int client)
 {
   return IsValidClient(client) && GetClientTeam(client) == view_as<int>(TEAM_SURVIVOR);
 }
 
+// 判断特感是否有效，有效返回 true，无效返回 false
 stock bool IsValidInfected(int client)
 {
   return IsValidClient(client) && GetClientTeam(client) == TEAM_INFECTED;
 }
 
+// 获取特感类型，成功返回特感类型，失败返回 -1
 stock int GetInfectedClass(int client)
 {
   return IsValidInfected(client) ? GetEntProp(client, Prop_Send, "m_zombieClass") : -1;
