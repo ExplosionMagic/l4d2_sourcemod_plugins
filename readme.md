@@ -3,6 +3,6 @@
 |                                            Sourcemod 插件平台                                               | 1.10 版本或更高  |
 |              [Left4DHooks](https://forums.alliedmods.net/showthread.php?p=2684862)                        | 1.118 版本或更高 |
 |              [multicolors](https://forums.alliedmods.net/showthread.php?t=247770)                         |                 |
-- **[survivor_mvp_fix](/survivor_mvp/left4dead2/addons/sourcemod)**: Display survivors' data such as killing SI, CI, FF done to teammates.
+- **[survivor_mvp_fix](/survivor_mvp/left4dead2/addons/sourcemod/)**: Display survivors' data such as killing SI, CI, FF done to teammates.
   <br>（生还者 MVP 数据显示，可显示生还者击杀特感、丧尸、友伤等数据）
   <br>Forked from [survivor_mvp](https://github.com/GlowingTree880/L4D2_LittlePlugins/tree/main/SurvivorMVP)
