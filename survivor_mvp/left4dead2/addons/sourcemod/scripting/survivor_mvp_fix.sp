@@ -4,8 +4,7 @@
 #include <sourcemod>
 #include <sdktools>
 #include <left4dhooks>
-//#include <colors>
-#include <multicolors>  // 引用 multicolors.inc
+#include <multicolors>  // 调用 multicolors.inc
 
 #define CVAR_FLAG FCVAR_NOTIFY
 
@@ -41,12 +40,13 @@ enum struct PlayerInfo
     this.totalDamage = this.siCount = this.ciCount = this.ffCount = this.gotFFCount = this.headShotCount = 0; }
 }
 
-PlayerInfo  playerInfos[MAXPLAYERS + 1];
+PlayerInfo    playerInfos[MAXPLAYERS + 1];
 
-static int  failCount;
-static bool g_bHasPrint;
-static bool g_bHasPrintDetails;
-static char mapName[64];
+static int    failCount;
+static bool   g_bHasPrint;
+static bool   g_bHasPrintDetails;
+static char   mapName[64];
+static Handle g_hAutoBroadcastTimer = null;
 
 public Plugin myinfo =
 {
@@ -74,7 +74,7 @@ ConVar g_hAllowShowRankMvp;
 ConVar g_hAllowShowRankSI;
 ConVar g_hAllowShowRankCI;
 ConVar g_hAllowShowRankFF;
-ConVar g_hAutoBroadcastInterval;  //自动广播间隔
+ConVar g_hAutoBroadcastInterval;  //自动播报间隔
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
 {
   EngineVersion test = GetEngineVersion();
@@ -104,10 +104,10 @@ public void OnPluginStart()
   g_hAllowShowRankCI       = CreateConVar("mvp_show_your_rank_ci", "1", "是否允许显示你的丧尸排名", CVAR_FLAG, true, 0, true, 1);
   g_hAllowShowRankFF       = CreateConVar("mvp_show_your_rank_ff", "1", "是否允许显示你的友伤排名", CVAR_FLAG, true, 0, true, 1);
 
-  // 自动广播间隔 (0 = 禁用自动广播间隔)
-  g_hAutoBroadcastInterval = CreateConVar("mvp_auto_broadcast_interval", "120", "自动广播 MVP 统计的间隔秒数", CVAR_FLAG, true, 0.0, true, 3600.0);
+  // 自动播报间隔 (单位：秒，0 = 禁用自动播报)
+  g_hAutoBroadcastInterval = CreateConVar("mvp_auto_broadcast_interval", "120", "自动播报 MVP 统计的间隔秒数", CVAR_FLAG, true, 0.0, true, 3600.0);
 
-  // Cvar 变动时重启定时器
+  // Cvar 变动时重启计时器
   g_hAutoBroadcastInterval.AddChangeHook(OnAutoBroadcastIntervalChanged);
   OnAutoBroadcastIntervalChanged(g_hAutoBroadcastInterval, "", "");
 
@@ -124,24 +124,23 @@ public void OnPluginStart()
   RegConsoleCmd("sm_rank", showRankHandler);
 }
 
-// 当自动广播间隔 Cvar 改变时，重启定时器
+// Cvar 改变时，自动重启计时器
 public void OnAutoBroadcastIntervalChanged(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-  static Handle hTimer = null;
-  if (hTimer != null)
+  if (g_hAutoBroadcastTimer != null)
   {
-    KillTimer(hTimer);
-    hTimer = null;
+    KillTimer(g_hAutoBroadcastTimer);
+    g_hAutoBroadcastTimer = null;
   }
 
   float interval = convar.FloatValue;
   if (interval > 0.0)
   {
-    hTimer = CreateTimer(interval, Timer_AutoBroadcast, _, TIMER_REPEAT);
+    g_hAutoBroadcastTimer = CreateTimer(interval, Timer_AutoBroadcast, _, TIMER_REPEAT);
   }
 }
 
-// 定时器回调，自动广播当前回合 MVP 信息
+// 计时器回调，自动播报当前回合 MVP 信息
 public Action Timer_AutoBroadcast(Handle timer)
 {
   if (!g_hAllowShowMvp.BoolValue)
@@ -212,7 +211,7 @@ public Action showRankHandler(int client, int args)
 {
   if (!g_hAllowShowRank.BoolValue)
   {
-    ReplyToCommand(client, "[MVP]：当前生还者 Rank 排名已禁用");
+    ReplyToCommand(client, "[MVP]：当前生还者排名已禁用");
     return Plugin_Handled;
   }
   showRank(client);
@@ -275,11 +274,24 @@ public void OnClientDisconnect(int client)
   playerInfos[client].init();
 }
 
+// 自动重启播报计时器
 public void roundStartHandler(Event event, const char[] name, bool dontBroadcast)
 {
   g_bHasPrint        = false;
   g_bHasPrintDetails = false;
 
+  float interval     = g_hAutoBroadcastInterval.FloatValue;
+  if (g_hAutoBroadcastTimer != null)
+  {
+    KillTimer(g_hAutoBroadcastTimer);
+    g_hAutoBroadcastTimer = null;
+  }
+  if (interval > 0.0)
+  {
+    g_hAutoBroadcastTimer = CreateTimer(interval, Timer_AutoBroadcast, _, TIMER_REPEAT);
+  }
+
+  // 自动清空数据
   char nowMapName[64];
   GetCurrentMap(nowMapName, sizeof(nowMapName));
   if (strlen(mapName) < 1 || strcmp(mapName, nowMapName) != 0)
@@ -295,6 +307,13 @@ public void missionLostHandler(Event event, const char[] name, bool dontBroadcas
   if (!g_hAllowShowMvp.BoolValue || g_bHasPrint)
     return;
 
+  // 立即停掉播报计时器，避免回合结束后意外触发
+  if (g_hAutoBroadcastTimer != null)
+  {
+    KillTimer(g_hAutoBroadcastTimer);
+    g_hAutoBroadcastTimer = null;
+  }
+
   roundEndPrint();
 
   if (g_hAllowShowFailCount.BoolValue)
@@ -307,6 +326,13 @@ public void roundEndHandler(Event event, const char[] name, bool dontBroadcast)
 {
   if (!g_hAllowShowMvp.BoolValue)
     return;
+
+  // 立即停掉播报计时器，避免回合结束后意外触发
+  if (g_hAutoBroadcastTimer != null)
+  {
+    KillTimer(g_hAutoBroadcastTimer);
+    g_hAutoBroadcastTimer = null;
+  }
 
   roundEndPrint();
   clearStuff();
@@ -349,8 +375,8 @@ void roundEndPrint()
       printParticularMvp(i);
 
       // 显示排名
-      if (g_hAllowShowRank.BoolValue && g_hAllowShowRankMvp.BoolValue)
-        showRank(i);
+      // if (g_hAllowShowRank.BoolValue && g_hAllowShowRankMvp.BoolValue)
+      //   showRank(i);
     }
   }
 
@@ -384,14 +410,14 @@ void printMvpStatus(int client)
   for (int i = 0; i < index; i++)
   {
     toPrint[0] = '\0';
-    // 击杀特感数
+    // 特感击杀数
     if (g_hAllowShowSi.BoolValue)
     {
       FormatEx(buffer, sizeof(buffer), "{orange}★ {default}特感:{green}%d ", playerInfos[players[i]].siCount);
       StrCat(toPrint, sizeof(toPrint), buffer);
     }
 
-    // 击杀丧尸数
+    // 丧尸击杀数
     if (g_hAllowShowCi.BoolValue)
     {
       FormatEx(buffer, sizeof(buffer), "{default}丧尸:{green}%d ", playerInfos[players[i]].ciCount);
@@ -509,18 +535,18 @@ void printParticularMvp(int client)
     CPrintToChat(client, "%s", buffer);
 
     // 挨枪最多
-    FormatEx(buffer, sizeof(buffer), "{olive}[挨枪之王] ");
-    if (!IsValidClient(gotFFMvpClient) || gotFFTotal <= 0)
-      StrCat(buffer, sizeof(buffer), "{default}暂时没有倒霉蛋被黑得最惨");
-    else
-    {
-      formatMvpClientName(gotFFMvpClient, clientName, sizeof(clientName));
-      int killPercent = (gotFFTotal > 0) ? RoundToNearest(float(playerInfos[gotFFMvpClient].gotFFCount) / float(gotFFTotal) * 100.0) : 0;
-      FormatEx(temp, sizeof(temp), "%s {default}受到友伤:{green}%d {default}({green}%d%%{default})",
-               clientName, playerInfos[gotFFMvpClient].gotFFCount, killPercent);
-      StrCat(buffer, sizeof(buffer), temp);
-    }
-    CPrintToChat(client, "%s", buffer);
+    // FormatEx(buffer, sizeof(buffer), "{olive}[挨枪之王] ");
+    // if (!IsValidClient(gotFFMvpClient) || gotFFTotal <= 0)
+    //   StrCat(buffer, sizeof(buffer), "{default}暂时没有倒霉蛋被黑得最惨");
+    // else
+    // {
+    //   formatMvpClientName(gotFFMvpClient, clientName, sizeof(clientName));
+    //   int killPercent = (gotFFTotal > 0) ? RoundToNearest(float(playerInfos[gotFFMvpClient].gotFFCount) / float(gotFFTotal) * 100.0) : 0;
+    //   FormatEx(temp, sizeof(temp), "%s {default}受到友伤:{green}%d {default}({green}%d%%{default})",
+    //            clientName, playerInfos[gotFFMvpClient].gotFFCount, killPercent);
+    //   StrCat(buffer, sizeof(buffer), temp);
+    // }
+    // CPrintToChat(client, "%s", buffer);
   }
 
   // 允许显示排名
@@ -554,7 +580,7 @@ void showRank(int client)
   if (g_hAllowShowSi.BoolValue && g_hAllowShowRankSI.BoolValue)
   {
     rank = GetRank(client, sortBySiCountFunction);
-    FormatEx(buffer, sizeof(buffer), "{olive}[击杀特感排名]:");
+    FormatEx(buffer, sizeof(buffer), "{olive}[特感 RANK]:");
     if (rank > 0 && siTotal > 0)
     {
       if (rank == 1)
@@ -575,7 +601,7 @@ void showRank(int client)
   if (g_hAllowShowCi.BoolValue && g_hAllowShowRankCI.BoolValue)
   {
     rank = GetRank(client, sortByCiCountFunction);
-    FormatEx(buffer, sizeof(buffer), "{olive}[击杀丧尸排名]:");
+    FormatEx(buffer, sizeof(buffer), "{olive}[丧尸 RANK]:");
     if (rank > 0 && ciTotal > 0)
     {
       if (rank == 1)
@@ -595,7 +621,7 @@ void showRank(int client)
   if (g_hAllowShowFF.BoolValue && g_hAllowShowRankFF.BoolValue)
   {
     rank = GetRank(client, sortByFriendlyFireFunction);
-    FormatEx(buffer, sizeof(buffer), "{olive}[造成友伤排名]:");
+    FormatEx(buffer, sizeof(buffer), "{olive}[友伤 RANK]:");
     if (rank > 0 && ffTotal > 0)
     {
       if (rank == 1)
