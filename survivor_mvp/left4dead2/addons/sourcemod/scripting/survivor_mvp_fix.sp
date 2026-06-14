@@ -54,7 +54,7 @@ public Plugin myinfo =
   author      = "ExplosionMagic",
   description = "MVP 击杀统计",
   version     = "2026-05-01",
-  url         = "https://steamcommunity.com/id/babylon34/"
+  url         = "https://github.com/ExplosionMagic/l4d2_sourcemod_plugins"
 
 
 }
